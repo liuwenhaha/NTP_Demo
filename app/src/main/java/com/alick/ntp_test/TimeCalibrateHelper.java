@@ -1,7 +1,11 @@
 package com.alick.ntp_test;
 
+import android.os.Handler;
+import android.os.Message;
 import android.os.SystemClock;
 import android.util.Log;
+
+import com.squareup.otto.Subscribe;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
@@ -15,11 +19,27 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 
+import rx.Observable;
+import rx.Scheduler;
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.observers.Subscribers;
+import rx.schedulers.Schedulers;
+import rx.subscriptions.Subscriptions;
+
 public class TimeCalibrateHelper {
-	private final int NTP_TIME_OUT_MILLISECOND = 30000;
+	private final int NTP_TIME_OUT_MILLISECOND = 10000;
     private final String LOG_TAG = TimeCalibrateHelper.class.getSimpleName();
 
     private boolean isStopCalibrate = false;
+
+    private Handler handler=new Handler(){
+        @Override
+        public void handleMessage(Message msg) {
+
+        }
+    };
+
     /**
      * ntp服务器地址集
      */
@@ -50,36 +70,65 @@ public class TimeCalibrateHelper {
             "s2j.time.edu.cn"
     };
 
+
+
+    public interface ICalibrateListener{
+        void onCalibrateSuccess(TimeBean timeBean);
+
+        void onCalibrateFail(String serverHost);
+    }
+
     /**
      * 开始校准时间
      */
-    public void startCalibrateTime() {
-        new Thread() {
+    public void startCalibrateTime(final ICalibrateListener iCalibrateListener) {
+        Observable<TimeBean> observable=Observable.create(new Observable.OnSubscribe<TimeBean>() {
             @Override
-            public void run() {
+            public void call(Subscriber<? super TimeBean> subscriber) {
                 while (!isStopCalibrate) {
                     for (int i = 0; i < ntpServerHost.length; i++) {
                         long time = getTimeFromNtpServer(ntpServerHost[i]);
 
-                        if (time != -1) {
-                            Log.i(LOG_TAG,"通过服务器:["+ntpServerHost[i]+"]获取时间成功:"+TimeUtils.parseLongToString(time,TimeUtils.format7)+",本机时间:"+TimeUtils.getCurrentTime(TimeUtils.format7));
-                            int tryCount = 3;
-                            while (tryCount > 0) {
-                                tryCount--;
-//                                boolean isSetTimeSuccessful = setCurrentTimeMillis(time);
-                                boolean isSetTimeSuccessful = true;
-                                if (isSetTimeSuccessful) {
-                                    tryCount = 0;
-                                    isStopCalibrate = true;
-                                    Log.i(LOG_TAG, "set time successful");
-                                } else {
-                                    Log.i(LOG_TAG, "set time failure");
-                                }
-                            }
-                            break;
-                        }
+                        isStopCalibrate = true;
+                        TimeBean timeBean=new TimeBean();
+                        timeBean.setServiceHost(ntpServerHost[i]);
+                        timeBean.setServiceTime(time);
+                        long localTime=System.currentTimeMillis();
+                        timeBean.setLocalTime(localTime);
+                        subscriber.onNext(timeBean);
                     }
+                    isStopCalibrate = true;
                 }
+
+            }
+        }).subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread());
+        observable.subscribe(new Subscriber<TimeBean>() {
+            @Override
+            public void onCompleted() {
+
+            }
+
+            @Override
+            public void onError(Throwable e) {
+
+            }
+
+            @Override
+            public void onNext(TimeBean timeBean) {
+                if(timeBean.getServiceTime()!=-1){
+                    iCalibrateListener.onCalibrateSuccess(timeBean);
+                }else{
+                    iCalibrateListener.onCalibrateFail(timeBean.getServiceHost());
+                }
+            }
+        });
+
+
+        new Thread() {
+            @Override
+            public void run() {
+
             }
         }.start();
     }

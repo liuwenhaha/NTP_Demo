@@ -21,6 +21,7 @@ public class TimeUtils {
 	public static final String format7="yyyy-MM-dd HH:mm:ss:ms";
 	public static final String format8="hh:mm";
 	public static final String format9="yyyy年MM月dd日 HH:mm:ss";
+	public static final String format10="HH:mm:ss:ms";
 	/**
 	 * 根据时间戳转换字符串时间格式
 	 * 
